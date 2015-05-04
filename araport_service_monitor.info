@@ -1,0 +1,7 @@
+name = araport_service_monitor
+description = Monitoring of various services in the Araport Platform
+core = 7.x
+package = Araport
+
+dependencies[] = agave
+dependencies[] = agave_status

@@ -1,0 +1,194 @@
+<?php
+/**
+ * @file
+ * araport_service_monitor.module file.
+ */
+
+ /**
+  * Implements hook_block_info().
+  */
+function araport_service_monitor_block_info() {
+  $blocks = array();
+
+  $blocks['status'] = array(
+    'info' => t('Araport Service Monitor'),
+    'cache' => DRUPAL_NO_CACHE,
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function araport_service_monitor_block_view($delta = '') {
+  $block = array();
+
+  switch ($delta) {
+    case 'status':
+      $services = array();
+      $services[] = "<div class=\"row\"><div class=\"col-xs-5\"><b>Service</b></div><div class=\"col-xs-7\"><b>Current Status</b></div></div>";
+
+      $service = araport_service_montior_get_status('agave');
+      $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
+
+      $service = araport_service_montior_get_status('adama');
+      $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
+
+      $service = araport_service_montior_get_status('thalemine');
+      $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
+
+      $service = araport_service_montior_get_status('jbrowse');
+      $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
+
+      $service = araport_service_montior_get_status('github');
+      $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
+
+      $block['subject'] = t('Araport Service Monitor');
+      $block['content'] = implode($services);
+      break;
+  }
+  return $block;
+}
+
+/**
+ * Gets the result of the status check for an Araport service
+ */
+function araport_service_montior_get_status($service = '') {
+  switch ($service) {
+    case 'agave':
+      $agave = agave_status_check_reduce();
+      return array(
+        'name' => 'Agave',
+        'status' => theme('status_io_status_value', array(
+          'status' => $agave->status,
+          'status_code' => $agave->status_code,
+        ))
+      );
+      break;
+
+    case 'thalemine':
+      $thalemine = araport_service_monitor_http_check('https://apps.araport.org/thalemine/begin.do');
+      return array(
+        'name' => 'Thalemine',
+        'status' => theme('status_io_status_value', array(
+          'status' => $thalemine->status,
+          'status_code' => $thalemine->status_code,
+        ))
+      );
+      break;
+
+    case 'jbrowse':
+      $jbrowse = araport_service_monitor_http_check('https://apps.araport.org/jbrowse');
+      return array(
+        'name' => 'JBrowse',
+        'status' => theme('status_io_status_value', array(
+          'status' => $jbrowse->status,
+          'status_code' => $jbrowse->status_code,
+        ))
+      );
+      break;
+
+    case 'adama':
+      $adama = araport_service_monitor_adama_status();
+      return array(
+        'name' => 'Community Data API',
+        'status' => theme('status_io_status_value', array(
+          'status' => $adama->status,
+          'status_code' => $adama->status_code,
+        ))
+      );
+      break;
+
+    case 'github':
+      $github = araport_service_monitor_github_status();
+      return array(
+        'name' => 'Code Repo',
+        'status' => theme('status_io_status_value', array(
+          'status' => $github->status,
+          'status_code' => $github->status_code,
+        ))
+      );
+      break;
+
+  }
+}
+
+/**
+ * Simply checks a URI expecting a 200 response.
+ */
+function araport_service_monitor_http_check($url) {
+  $resp = drupal_http_request($url, array('method' => 'HEAD'));
+  return (object) array(
+    'status' => $resp->code == 200 ? 'Operational' : 'Service Disruption',
+    'status_code' => $resp->code == 200 ? 100 : $resp->code
+  );
+}
+
+/**
+ * Simply checks a URI expecting a 200 response.
+ */
+function araport_service_monitor_github_status() {
+  $resp = drupal_http_request('https://status.github.com/api/status.json');
+  $status = json_decode($resp->data);
+  switch ($status->status) {
+    case 'good':
+      return (object) array(
+        'status' => 'Operational',
+        'status_code' => 100
+      );
+    break;
+
+    case 'minor':
+      return (object) array(
+        'status' => 'Partial Service Disruption',
+        'status_code' => 300
+      );
+    break;
+
+    case 'major':
+      return (object) array(
+        'status' => 'Service Disruption',
+        'status_code' => 500
+      );
+    break;
+  }
+}
+
+/**
+ * Simply checks a URI expecting a 200 response.
+ */
+function araport_service_monitor_adama_status() {
+  $site_token = variable_get('agave_tenant_token', '');
+  if ($site_token) {
+    $resp = drupal_http_request('https://api.araport.org/community/v0.3/status',
+      array(
+        'headers' => array(
+          'Authorization' => "Bearer $site_token"
+        )
+      )
+    );
+    watchdog('araport_service_monitor', print_r($resp, 1), array(), WATCHDOG_DEBUG);
+
+    if ($resp->code == 500) {
+      $status = 'Unknown';
+      $status_code = 300;
+    } else {
+      $data = json_decode($resp->data);
+      if ($data->status == 'success') {
+        $status = 'Operational';
+        $status_code = 100;
+      } else {
+        $status = 'Service Disruption';
+        $status_code = 500;
+      }
+    }
+  } else {
+    $status = 'Unknown';
+    $status_code = 300;
+  }
+  return (object) array(
+    'status' => $status,
+    'status_code' => $status_code
+  );
+}
