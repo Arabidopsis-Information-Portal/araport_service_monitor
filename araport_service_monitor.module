@@ -68,7 +68,7 @@ function araport_service_montior_get_status($service = '') {
       break;
 
     case 'thalemine':
-      $thalemine = araport_service_monitor_http_check('https://apps.araport.org/thalemine/begin.do');
+      $thalemine = araport_service_monitor_thalemine_check();
       return array(
         'name' => 'Thalemine',
         'status' => theme('status_io_status_value', array(
@@ -79,7 +79,7 @@ function araport_service_montior_get_status($service = '') {
       break;
 
     case 'jbrowse':
-      $jbrowse = araport_service_monitor_http_check('https://apps.araport.org/jbrowse');
+      $jbrowse = araport_service_monitor_jbrowse_check();
       return array(
         'name' => 'JBrowse',
         'status' => theme('status_io_status_value', array(
@@ -117,78 +117,143 @@ function araport_service_montior_get_status($service = '') {
 /**
  * Simply checks a URI expecting a 200 response.
  */
-function araport_service_monitor_http_check($url) {
-  $resp = drupal_http_request($url, array('method' => 'HEAD'));
-  return (object) array(
-    'status' => $resp->code == 200 ? 'Operational' : 'Service Disruption',
-    'status_code' => $resp->code == 200 ? 100 : $resp->code
-  );
+function araport_service_monitor_thalemine_check() {
+  $status = &drupal_static(__FUNCTION__);
+  if (! isset($status)) {
+    if ($cache = cache_get('araport_service_monitor_thalemine_check_data')) {
+      $status = $cache->data;
+    } else {
+      $url = 'https://apps.araport.org/thalemine/begin.do';
+      $resp = drupal_http_request($url, array('timeout' => 5));
+      $status = (object) array(
+        'status' => $resp->code == 200 ? 'Operational' : 'Service Disruption',
+        'status_code' => $resp->code == 200 ? 100 : $resp->code
+      );
+      cache_set('araport_service_monitor_thalemine_check_data', $status, 'cache', time() + 300);
+    }
+  }
+  return $status;
+}
+
+/**
+ * Simply checks a URI expecting a 200 response.
+ */
+function araport_service_monitor_jbrowse_check() {
+  $status = &drupal_static(__FUNCTION__);
+  if (! isset($status)) {
+    if ($cache = cache_get('araport_service_monitor_jbrowse_check_data')) {
+      $status = $cache->data;
+    } else {
+      $url = 'https://apps.araport.org/jbrowse';
+      $resp = drupal_http_request($url, array('timeout' => 5));
+      $status = (object) array(
+        'status' => $resp->code == 200 ? 'Operational' : 'Service Disruption',
+        'status_code' => $resp->code == 200 ? 100 : $resp->code
+      );
+      cache_set('araport_service_monitor_jbrowse_check_data', $status, 'cache', time() + 300);
+    }
+  }
+  return $status;
 }
 
 /**
  * Simply checks a URI expecting a 200 response.
  */
 function araport_service_monitor_github_status() {
-  $resp = drupal_http_request('https://status.github.com/api/status.json');
-  $status = json_decode($resp->data);
-  switch ($status->status) {
-    case 'good':
-      return (object) array(
-        'status' => 'Operational',
-        'status_code' => 100
-      );
-    break;
+  $status = &drupal_static(__FUNCTION__);
+  if (! isset($status)) {
+    if ($cache = cache_get('araport_service_monitor_github_status_data')) {
+      // watchdog('agave_status', 'using agave_status from cache', array(), WATCHDOG_DEBUG);
+      $status = $cache->data;
+    } else {
+      $url = 'https://status.github.com/api/status.json';
+      $response = drupal_http_request($url, array('timeout' => 5));
+      if ($response->code == 200) {
+        $response = json_decode($response->data);
+        switch ($response->status) {
+          case 'good':
+            $status = (object) array(
+              'status' => 'Operational',
+              'status_code' => 100
+            );
+            break;
 
-    case 'minor':
-      return (object) array(
-        'status' => 'Partial Service Disruption',
-        'status_code' => 300
-      );
-    break;
+          case 'minor':
+            $status = (object) array(
+              'status' => 'Partial Service Disruption',
+              'status_code' => 300
+            );
+            break;
 
-    case 'major':
-      return (object) array(
-        'status' => 'Service Disruption',
-        'status_code' => 500
-      );
-    break;
+          case 'major':
+            $status = (object) array(
+              'status' => 'Service Disruption',
+              'status_code' => 500
+            );
+            break;
+
+          default:
+            $status = (object) array(
+              'status' => 'Unknown',
+              'status_code' => 300
+            );
+        }
+        cache_set('araport_service_monitor_github_status_data', $status, 'cache', time() + 300);
+      } else {
+        $status = (object) array(
+          'status' => 'Unknown',
+          'status_code' => 300
+        );
+      }
+    }
   }
+  return $status;
 }
 
 /**
- * Simply checks a URI expecting a 200 response.
+ * Check ADAMA /status API using site token
  */
 function araport_service_monitor_adama_status() {
-  $site_token = variable_get('agave_tenant_token', '');
-  if ($site_token) {
-    $resp = drupal_http_request('https://api.araport.org/community/v0.3/status',
-      array(
-        'headers' => array(
-          'Authorization' => "Bearer $site_token"
-        )
-      )
-    );
-    watchdog('araport_service_monitor', print_r($resp, 1), array(), WATCHDOG_DEBUG);
-
-    if ($resp->code == 500) {
-      $status = 'Unknown';
-      $status_code = 300;
+  $status = &drupal_static(__FUNCTION__);
+  if (! isset($status)) {
+    if ($cache = cache_get('araport_service_monitor_adama_status_data')) {
+      $status = $cache->data;
     } else {
-      $data = json_decode($resp->data);
-      if ($data->status == 'success') {
-        $status = 'Operational';
-        $status_code = 100;
+      $site_token = variable_get('agave_tenant_token', '');
+      if ($site_token) {
+        $resp = drupal_http_request('https://api.araport.org/community/v0.3/status',
+          array(
+            'headers' => array(
+              'Authorization' => "Bearer $site_token"
+            )
+          )
+        );
+
+        if ($resp->code == 500) {
+          $status_label = 'Unknown';
+          $status_code = 300;
+        } else {
+          $data = json_decode($resp->data);
+          if ($data->status == 'success') {
+            $status_label = 'Operational';
+            $status_code = 100;
+          } else {
+            $status_label = 'Service Disruption';
+            $status_code = 500;
+          }
+        }
       } else {
-        $status = 'Service Disruption';
-        $status_code = 500;
+        $status_label = 'Unknown';
+        $status_code = 300;
       }
+
+      $status = (object) array(
+        'status' => $status_label,
+        'status_code' => $status_code
+      );
+
+      cache_set('araport_service_monitor_adama_status_data', $status, 'cache', time() + 300);
     }
-  } else {
-    $status = 'Unknown';
-    $status_code = 300;
   }
-  return (object) array(
-    'status' => $status,
-    'status_code' => $status_code
-  );
+  return $status;
 }
