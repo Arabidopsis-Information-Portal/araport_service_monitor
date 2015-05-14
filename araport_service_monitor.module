@@ -223,9 +223,10 @@ function araport_service_monitor_adama_status() {
       if ($site_token) {
         $resp = drupal_http_request('https://api.araport.org/community/v0.3/status',
           array(
+            'timeout' => 5,
             'headers' => array(
               'Authorization' => "Bearer $site_token"
-            )
+            ),
           )
         );
 
