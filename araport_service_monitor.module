@@ -238,6 +238,9 @@ function araport_service_monitor_adama_status() {
           if ($data->status == 'success') {
             $status_label = 'Operational';
             $status_code = 100;
+          } else if ($data->status == 'maintenance') {
+            $status_label = 'Planned Outage';
+            $status_code = 300;
           } else {
             $status_label = 'Service Disruption';
             $status_code = 500;
