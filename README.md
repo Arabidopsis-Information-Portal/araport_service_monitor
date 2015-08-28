@@ -11,8 +11,9 @@ Service   | Method
 --------- | ------
 Agave     | `agave_status` module
 ADAMA     | ADAMA `/status` API
-Thalemine | HTTP check
+ThaleMine | HTTP check
 JBrowse   | HTTP check
+WebApollo | HTTP check
 Github    | [Github Status API][1]
 
 
