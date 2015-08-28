@@ -41,6 +41,9 @@ function araport_service_monitor_block_view($delta = '') {
       $service = araport_service_montior_get_status('jbrowse');
       $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
 
+      $service = araport_service_montior_get_status('webapollo');
+      $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
+
       $service = araport_service_montior_get_status('github');
       $services[] = "<div class=\"row\"><div class=\"col-xs-5\">{$service['name']}</div><div class=\"col-xs-7\">{$service['status']}</div></div>";
 
@@ -70,7 +73,7 @@ function araport_service_montior_get_status($service = '') {
     case 'thalemine':
       $thalemine = araport_service_monitor_thalemine_check();
       return array(
-        'name' => 'Thalemine',
+        'name' => 'ThaleMine',
         'status' => theme('status_io_status_value', array(
           'status' => $thalemine->status,
           'status_code' => $thalemine->status_code,
@@ -85,6 +88,17 @@ function araport_service_montior_get_status($service = '') {
         'status' => theme('status_io_status_value', array(
           'status' => $jbrowse->status,
           'status_code' => $jbrowse->status_code,
+        ))
+      );
+      break;
+
+    case 'webapollo':
+      $webapollo = araport_service_monitor_webapollo_check();
+      return array(
+        'name' => 'Web Apollo',
+        'status' => theme('status_io_status_value', array(
+          'status' => $webapollo->status,
+          'status_code' => $webapollo->status_code,
         ))
       );
       break;
@@ -115,42 +129,45 @@ function araport_service_montior_get_status($service = '') {
 }
 
 /**
- * Simply checks a URI expecting a 200 response.
+ * Simply checks the ThaleMine URI expecting a 200 response.
  */
 function araport_service_monitor_thalemine_check() {
-  $status = &drupal_static(__FUNCTION__);
-  if (! isset($status)) {
-    if ($cache = cache_get('araport_service_monitor_thalemine_check_data')) {
-      $status = $cache->data;
-    } else {
-      $url = 'https://apps.araport.org/thalemine/begin.do';
-      $resp = drupal_http_request($url, array('timeout' => 5));
-      $status = (object) array(
-        'status' => $resp->code == 200 ? 'Operational' : 'Service Disruption',
-        'status_code' => $resp->code == 200 ? 100 : $resp->code
-      );
-      cache_set('araport_service_monitor_thalemine_check_data', $status, 'cache', time() + 300);
-    }
-  }
+  $status = araport_service_monitor_check_http_response('thalemine', 'https://apps.araport.org/thalemine/begin.do');
+  return $status;
+}
+
+/**
+ * Simply checks the JBrowse URI expecting a 200 response.
+ */
+function araport_service_monitor_jbrowse_check() {
+  $status = araport_service_monitor_check_http_response('jbrowse', 'https://apps.araport.org/jbrowse');
+  return $status;
+}
+
+/**
+ * Simply checks the Web Apollo URI expecting a 200 response.
+ */
+function araport_service_monitor_webapollo_check() {
+  $status = araport_service_monitor_check_http_response('webapollo', 'https://apps.araport.org/WebApollo/');
   return $status;
 }
 
 /**
  * Simply checks a URI expecting a 200 response.
  */
-function araport_service_monitor_jbrowse_check() {
+function araport_service_monitor_check_http_response($appname, $url) {
   $status = &drupal_static(__FUNCTION__);
+  $cache_name = 'araport_service_monitor_' . $appname . '_check_data';
   if (! isset($status)) {
-    if ($cache = cache_get('araport_service_monitor_jbrowse_check_data')) {
+    if ($cache = cache_get($cache_name)) {
       $status = $cache->data;
     } else {
-      $url = 'https://apps.araport.org/jbrowse';
       $resp = drupal_http_request($url, array('timeout' => 5));
       $status = (object) array(
         'status' => $resp->code == 200 ? 'Operational' : 'Service Disruption',
         'status_code' => $resp->code == 200 ? 100 : $resp->code
       );
-      cache_set('araport_service_monitor_jbrowse_check_data', $status, 'cache', time() + 300);
+      cache_set($cache_name, $status, 'cache', time() + 300);
     }
   }
   return $status;
